@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+        }
+
+        #main {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="main"></canvas>
+</body>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../threejs/build/three.module.js", 
+    "three/addons/": "../threejs/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    function main() {
+        // https://blog.mozvr.com/cartoon-outline-effect/
+        // https://blog.mozvr.com/customizing-vertex-shaders/
+
+        const canvas = document.querySelector('#main');
+        const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
+
+        const fov = 75;
+        const aspect = 2; // the canvas default
+        const near = 0.01;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 4;
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.listenToKeyEvents(window);
+        controls.keys = {
+            LEFT: 'ArrowLeft',
+            RIGHT: 'ArrowRight',
+            UP: 'ArrowUp',
+            DOWN: 'ArrowDown'
+        };
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN
+        };
+        // camera.position.set(0, 0, 0);
+        controls.update();
+
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeeeeee);
+
+        {
+
+            const color = 0xFFFFFF;
+            const intensity = 3;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(- 1, 2, 4);
+            scene.add(light);
+
+
+        }
+
+        /*
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        function makeInstance(geometry, color, x) {
+
+            const material = new THREE.MeshPhongMaterial({ color });
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+
+            return cube;
+
+        }
+
+        const cubes = [
+            makeInstance(geometry, 0x44aa88, 0),
+            makeInstance(geometry, 0x8844aa, - 2),
+            makeInstance(geometry, 0xaa8844, 2),
+        ];
+        */
+
+        let obj = new THREE.Group();
+        const mat = new THREE.MeshPhongMaterial({
+            color: 0x2288ff,
+            shininess: 100,
+            wireframe: true
+            // side: THREE.BackSide
+        })
+        let matShader;
+        mat.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 }
+            shader.vertexShader = `
+                uniform float time;
+            ` + shader.vertexShader
+            const token = '#include <begin_vertex>'
+            const customTransform = `
+                vec3 transformed = vec3(position);
+                float dx = position.x;
+                float dy = position.y;
+
+                float freq = sqrt(dx * dx + dy * dy);
+                float amp = 0.1;
+                float angle = -time * 10.0 + sin(freq) * 6.0;
+                // float angle = 10.0 + freq * 6.0;
+                // float angle = 6.0;
+                transformed.z += sin(angle) * amp;
+
+                objectNormal = normalize(vec3(0.0, -amp * freq * cos(angle), 1.0));
+                vNormal = normalMatrix * objectNormal;
+                `
+            shader.vertexShader =
+                shader.vertexShader.replace(token, customTransform)
+            matShader = shader
+        }
+
+        let pb = new THREE.PlaneGeometry(20, 20, 100, 100);
+        let pm = new THREE.Mesh(pb, mat);
+        pm.rotation.x = -60 * Math.PI / 180;
+        pm.position.z = -10;
+        pm.position.y = 1.5;
+        obj.add(pm);
+        scene.add(obj);
+
+
+
+        function resizeRendererToDisplaySize(renderer) {
+
+            const canvas = renderer.domElement;
+            const pixelRatio = window.devicePixelRatio;
+            const width = canvas.clientWidth * pixelRatio | 0;
+            const height = canvas.clientHeight * pixelRatio | 0;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+
+                renderer.setSize(width, height, false);
+
+            }
+
+            return needResize;
+
+        }
+
+        function render(time) {
+
+            // time *= 0.001;
+
+            if (matShader)
+                matShader.uniforms.time.value = time / 1000;
+            // if (materialShader)
+            //     materialShader.uniforms.time.value = time / 1000;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+
+            }
+
+            /*
+            cubes.forEach((cube, ndx) => {
+
+                const speed = 1 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+
+            });
+                */
+
+            controls.update();
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+
+        }
+
+        requestAnimationFrame(render);
+
+    }
+
+    main();
+</script>
+
+</html>

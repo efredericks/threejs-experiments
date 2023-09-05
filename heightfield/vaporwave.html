@@ -1,0 +1,286 @@
+<!-- https://blog.maximeheckel.com/posts/vaporwave-3d-scene-with-threejs/ -->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+        }
+
+        #main {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="main"></canvas>
+</body>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../threejs/build/three.module.js", 
+    "three/addons/": "../threejs/examples/jsm/",
+    "simplex-noise": "../libs/simplex-noise/simplex.js"
+  }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShader.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { BloomPass } from 'three/addons/postprocessing/BloomPass.js';
+    import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
+    import { DigitalGlitch } from 'three/addons/shaders/DigitalGlitch.js';
+    // import { createNoise2D } from 'simplex-noise';
+    import { simplex2D } from 'simplex-noise';
+
+    let map = (val, smin, smax, emin, emax) => {
+        const t = (val - smin) / (smax - smin);
+        return (emax - emin) * t + emin;
+    }
+
+    let noise = (nx, ny) => {
+        return map(simplex2D(nx, ny), -1, 1, 0, 1);
+    }
+
+    let octave = (nx, ny, octaves) => {
+        let val = 0;
+        let freq = 1;
+        let max = 0;
+        let amp = 1;
+        for (let i = 0; i < octaves; i++) {
+            val += noise(nx * freq, ny * freq) * amp;
+            max += amp;
+            amp /= 2;
+            freq *= 2;
+        }
+        return val / max;
+    }
+    function main() {
+        const canvas = document.querySelector('#main');
+        const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
+
+        const fov = 75;
+        const aspect = 2; // the canvas default
+        const near = 0.01;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+
+        camera.position.x = 0;
+        camera.position.y = 0.06;
+        camera.position.z = 1.1;
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.listenToKeyEvents(window);
+        controls.keys = {
+            LEFT: 'ArrowLeft',
+            RIGHT: 'ArrowRight',
+            UP: 'ArrowUp',
+            DOWN: 'ArrowDown'
+        };
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN
+        };
+        // camera.position.set(0, 0, 0);
+        controls.update();
+
+        const scene = new THREE.Scene();
+        // const fog = new THREE.Fog('#000000', 1, 2.5);
+        // scene.fog = fog;
+
+        // load texture
+        const textureLoader = new THREE.TextureLoader();
+        const gridTexture = textureLoader.load('./grid.png');
+        const terrainTexture = textureLoader.load('./displacement.png');
+        const metalTexture = textureLoader.load('./metalness.png');
+
+        const effectComposer = new EffectComposer(renderer);
+        effectComposer.setSize(window.innerWidth, window.innerHeight);
+        effectComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const renderPass = new RenderPass(scene, camera);
+        effectComposer.addPass(renderPass);
+
+        const digitalGlitchPass = new ShaderPass(DigitalGlitch);
+        digitalGlitchPass.uniforms['amount'].value = 0.001;
+        digitalGlitchPass.uniforms['angle'].value = Math.random() * 360.;
+        digitalGlitchPass.uniforms['distortion_x'].value = 0.001;
+        digitalGlitchPass.uniforms['distortion_y'].value = 1;//window.innerHeight/2;
+        effectComposer.addPass(digitalGlitchPass);
+
+        const rgbShiftPass = new ShaderPass(RGBShiftShader);
+        rgbShiftPass.uniforms['amount'].value = 0.0015;
+        effectComposer.addPass(rgbShiftPass);
+
+        // const bloomPass = new ShaderPass(BloomPass);
+        // effectComposer.addPass(bloomPass);
+
+        const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
+        effectComposer.addPass(gammaCorrectionPass);
+
+
+
+        const clock = new THREE.Clock();
+
+
+        // scene.background = new THREE.Color(0xeeeeee);
+
+        // light
+        {
+            const color = 0xFFFFFF;
+            const intensity = 100;
+            const light = new THREE.AmbientLight(color, intensity);//DirectionalLight(color, intensity);
+            light.position.set(- 1, 2, 4);
+            scene.add(light);
+
+            // Right Spotlight aiming to the left
+            const spotlight = new THREE.SpotLight('#008080', 200, 25, Math.PI * 0.1, 0.25);
+            spotlight.position.set(0.5, 0.75, 2.2);
+            // Target the spotlight to a specific point to the left of the scene
+            spotlight.target.position.x = -0.25;
+            spotlight.target.position.y = 0.25;
+            spotlight.target.position.z = 0.25;
+            scene.add(spotlight);
+            scene.add(spotlight.target);
+
+            // Left Spotlight aiming to the right
+            const spotlight2 = new THREE.SpotLight('#ff00ff', 200, 25, Math.PI * 0.1, 0.25);
+            spotlight2.position.set(-0.5, 0.75, 2.2);
+            // Target the spotlight to a specific point to the right side of the scene
+            spotlight2.target.position.x = 0.25;
+            spotlight2.target.position.y = 0.25;
+            spotlight2.target.position.z = 0.25;
+            scene.add(spotlight2);
+            scene.add(spotlight2.target);
+
+            const spotlight3 = new THREE.SpotLight('#eecd69', 2000, 25, Math.PI * 0.1, 0.25);
+            spotlight3.position.set(0, 0, -0.5);
+            // Target the spotlight to a specific point to the right side of the scene
+            spotlight3.target.position.x = 0.;
+            spotlight3.target.position.y = 0.;
+            spotlight3.target.position.z = -2.;
+            scene.add(spotlight3);
+            scene.add(spotlight3.target);
+        }
+
+        let obj = new THREE.Group();
+        const geometry = new THREE.PlaneGeometry(1, 2, 24, 24);
+        const material = new THREE.MeshStandardMaterial({
+            // color: 0xffffff,
+            map: gridTexture,
+            displacementMap: terrainTexture,
+            displacementScale: 0.4,
+            metalnessMap: metalTexture,
+            metalness: 0.96,
+            roughness: 0.5,
+        });
+        const plane = new THREE.Mesh(geometry, material);
+        plane.rotation.x = -Math.PI * 0.5;
+        plane.position.y = 0.0;
+        plane.position.z = 0.15;
+
+        const plane2 = new THREE.Mesh(geometry, material);
+        plane2.rotation.x = -Math.PI * 0.5;
+        plane2.position.y = 0.0;
+        plane2.position.z = -1.85;
+
+        obj.add(plane);
+        obj.add(plane2);
+
+        // "sun"
+        const ico = new THREE.IcosahedronGeometry(7, 2);
+        const sunMat = new THREE.MeshStandardMaterial({
+            color: 0x008080,
+            wireframe: true,
+        });
+        const sun = new THREE.Mesh(ico, sunMat);
+        sun.position.y = 0.0;
+        sun.position.z = -1.75;
+        const sscale = 0.12;
+        sun.scale.set(sscale, sscale, sscale);
+
+        const sunlight = new THREE.PointLight(0x008080, 50, 1, 100);
+        sunlight.position.set(0.0, 0.80, -1.5);
+        scene.add(sunlight);
+
+        const sunlight2 = new THREE.PointLight(0x002020, 50, 1, 100);
+        sunlight2.position.set(0.0, 0.80, -0.5);
+        scene.add(sunlight2);
+
+        obj.add(sun);
+
+
+
+        scene.add(obj);
+
+        function resizeRendererToDisplaySize(renderer) {
+
+            const canvas = renderer.domElement;
+            const pixelRatio = window.devicePixelRatio;
+            const width = canvas.clientWidth * pixelRatio | 0;
+            const height = canvas.clientHeight * pixelRatio | 0;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+
+                renderer.setSize(width, height, false);
+                effectComposer.setSize(width, height);
+                effectComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            }
+
+            return needResize;
+        }
+
+        function render(time) {
+            const elapsedTime = clock.getElapsedTime();
+            plane.position.z = (elapsedTime * 0.15) % 2;
+            plane2.position.z = ((elapsedTime * 0.15) % 2) - 2;
+
+            sun.rotation.x = (elapsedTime * 0.1);
+            sun.rotation.y = (elapsedTime * 0.1);
+            sun.rotation.z = (elapsedTime * 0.1);
+
+            if (Math.random() > 0.9) {
+                const sscale2 = Math.random();
+                sun.scale.set(sscale*sscale2,sscale*sscale2,sscale*sscale2);
+            } else {
+                sun.scale.set(sscale,sscale,sscale);
+            }
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            controls.update();
+
+            digitalGlitchPass.uniforms['angle'].value += 0.01;
+
+            // renderer.render(scene, camera);
+            effectComposer.render();
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+
+    }
+
+    main();
+</script>

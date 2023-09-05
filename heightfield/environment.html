@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+        }
+
+        #main {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="main"></canvas>
+</body>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../threejs/build/three.module.js", 
+    "three/addons/": "../threejs/examples/jsm/",
+    "simplex-noise": "../libs/simplex-noise/simplex.js"
+  }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    // import { createNoise2D } from 'simplex-noise';
+    import { simplex2D } from 'simplex-noise';
+
+    let map = (val, smin, smax, emin, emax) => {
+        const t = (val - smin) / (smax - smin);
+        return (emax - emin) * t + emin;
+    }
+
+    let noise = (nx, ny) => {
+        return map(simplex2D(nx, ny), -1, 1, 0, 1);
+    }
+
+    let octave = (nx, ny, octaves) => {
+        let val = 0;
+        let freq = 1;
+        let max = 0;
+        let amp = 1;
+        for (let i = 0; i < octaves; i++) {
+            val += noise(nx * freq, ny * freq) * amp;
+            max += amp;
+            amp /= 2;
+            freq *= 2;
+        }
+        return val / max;
+    }
+
+    let generateTexture = (canvas) => {
+        let size = canvas.width * canvas.height;
+        let data = new Uint8Array(4 * size);
+        for (let i = 0; i < size; i++) {
+            const stride = i * 4;
+            data[stride] = 0;
+            data[stride + 1] = 0;
+            data[stride + 2] = 0;
+            data[stride + 3] = 255;
+        }
+
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                let v = octave(x / canvas.width, y / canvas.height, 16);
+                const per = Math.floor(255 * v);
+
+                let idx = (x + y * canvas.width) * 4;
+                data[idx] = per;
+                data[idx + 1] = per;
+                data[idx + 2] = per;
+                // c.fillStyle = `rgb(${per}, ${per}, ${per})`;
+                // c.fillRect(x, y, 1, 1);
+            }
+        }
+        return data;//c.getImageData(0, 0, canvas.width, canvas.height);
+    }
+
+    function main() {
+        // https://blog.mozvr.com/cartoon-outline-effect/
+        // https://blog.mozvr.com/customizing-vertex-shaders/
+
+        const canvas = document.querySelector('#main');
+        const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
+
+        const fov = 75;
+        const aspect = 2; // the canvas default
+        const near = 0.01;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 4;
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.listenToKeyEvents(window);
+        controls.keys = {
+            LEFT: 'ArrowLeft',
+            RIGHT: 'ArrowRight',
+            UP: 'ArrowUp',
+            DOWN: 'ArrowDown'
+        };
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN
+        };
+        // camera.position.set(0, 0, 0);
+        controls.update();
+
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeeeeee);
+
+        {
+
+            const color = 0xFFFFFF;
+            const intensity = 3;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(- 1, 2, 4);
+            scene.add(light);
+
+
+        }
+
+        /*
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        function makeInstance(geometry, color, x) {
+
+            const material = new THREE.MeshPhongMaterial({ color });
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+
+            return cube;
+
+        }
+
+        const cubes = [
+            makeInstance(geometry, 0x44aa88, 0),
+            makeInstance(geometry, 0x8844aa, - 2),
+            makeInstance(geometry, 0xaa8844, 2),
+        ];
+        */
+
+        let data = generateTexture(canvas);
+
+        let obj = new THREE.Group();
+        const mat = new THREE.MeshPhongMaterial({
+            color: 0x2288ff,
+            shininess: 100,
+            wireframe: true
+            // side: THREE.BackSide
+        })
+
+        /*
+        let matShader;
+        mat.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 }
+            shader.vertexShader = `
+                uniform float time;
+            ` + shader.vertexShader
+            const token = '#include <begin_vertex>'
+            const customTransform = `
+                vec3 transformed = vec3(position);
+                float dx = position.x;
+                float dy = position.y;
+
+                float freq = sqrt(dx * dx + dy * dy);
+                float amp = 0.1;
+                float angle = -time * 10.0 + freq * 6.0;
+                // float angle = 10.0 + freq * 6.0;
+                // float angle = 6.0;
+                transformed.z += sin(angle) * amp;
+
+                objectNormal = normalize(vec3(0.0, -amp * freq * cos(angle), 1.0));
+                vNormal = normalMatrix * objectNormal;
+                `
+            shader.vertexShader =
+                shader.vertexShader.replace(token, customTransform)
+            matShader = shader
+        }
+
+        let pb = new THREE.PlaneGeometry(20, 20, 100, 100);
+        let pm = new THREE.Mesh(pb, mat);
+        pm.rotation.x = -60 * Math.PI / 180;
+        pm.position.z = -10;
+        pm.position.y = 1.5;
+        obj.add(pm);
+        */
+
+        // heightmap
+        // https://github.com/eviltik/threejs-boilerplate-webpack5/blob/d870c4d4718c6b8e69936c2477febee9cefdaa62/src/static/curved-rectangle/index.html
+        // const geo = new THREE.PlaneGeometry(canvas.width, canvas.height, canvas.width, canvas.height+1);
+        let geo = new THREE.PlaneGeometry(20, 20, 100, 100).toNonIndexed();
+        const positions = geo.attributes.position;
+        let vTemp = new THREE.Vector3(0, 0, 0);
+
+        for (let i = 0; i < positions.count; i++) {
+            vTemp.fromBufferAttribute(positions, i);
+            // let v = octave(vTemp.x/canvas.width, vTemp.y/canvas.height, 32);
+            vTemp.setZ(map(
+                noise(vTemp.x, vTemp.y), 0.0, 1.0, 0., 0.75)
+                // v, 0.0, 1.0, -10, 10)
+            );
+            positions.setXYZ(i, vTemp.x, vTemp.y, vTemp.z);
+        }
+
+        const colors = [];
+        const color = new THREE.Color();
+        for (let i = 0; i < positions.count; i += 3) {
+            let a = new THREE.Vector3(0, 0, 0);
+            let b = new THREE.Vector3(0, 0, 0);
+            let c = new THREE.Vector3(0, 0, 0);
+
+            a.fromBufferAttribute(positions, i);
+            b.fromBufferAttribute(positions, i + 1);
+            c.fromBufferAttribute(positions, i + 2);
+
+            const avgz = (a.z + b.z + c.z) / 3;
+            if (avgz < 0) {
+                a.z = 0;
+                b.z = 0;
+                c.z = 0;
+            }
+
+            const max = Math.max(a.z, Math.max(b.z, c.z));
+            if (max <= 0.05) color.set(0x44ccff);
+            else if (max <= 0.25) color.set(0x228800);
+            else if (max <= 0.5) color.set(0xeecc44);
+            else if (max <= 0.75) color.set(0xcccccc);
+            else color.set(0xffffff);
+
+            // color.set(Math.random() * 0xffffff);
+            colors.push(color.r, color.g, color.b);
+            colors.push(color.r, color.g, color.b);
+            colors.push(color.r, color.g, color.b);
+        }
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        geo.colorsNeedUpdate = true;
+        geo.verticesNeedUpdate = true;
+        // geo.computeFlatVertexNormals();
+        const cmat = new THREE.MeshLambertMaterial({
+            vertexColors: true,//THREE.VertexColors,
+            flatShading: true
+        });
+
+        /*
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                let idx = (x + y * canvas.width) * 3;
+
+                let z = map(noise(x, y), 0.0, 1.0, -10, 10);
+
+                geo.attributes.position.setXYZ(x, y, z, idx);
+            }
+        }
+        */
+
+
+        // const geo = new THREE.BufferGeometry();
+        /*
+        const vertices = new Float32Array(data.length);
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                const n = (y * (canvas.height) + x);
+                const nn = (y * (canvas.height+1) + x);
+
+                console.log(x, y, n, nn)
+                const col = data[n*4];
+                console.log(vertices)
+                const v1 = vertices[nn];
+                v1.z = map(col, 0, 255, -10, 10);
+                if (v1.z > 2.5) v1.z *= 1.3;
+            }
+        }
+        */
+        let pm = new THREE.Mesh(geo, cmat);
+        pm.rotation.x = -60 * Math.PI / 180;
+        pm.position.z = -10;
+        pm.position.y = 1.5;
+        obj.add(pm);
+        scene.add(obj);
+
+
+
+        function resizeRendererToDisplaySize(renderer) {
+
+            const canvas = renderer.domElement;
+            const pixelRatio = window.devicePixelRatio;
+            const width = canvas.clientWidth * pixelRatio | 0;
+            const height = canvas.clientHeight * pixelRatio | 0;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+
+                renderer.setSize(width, height, false);
+
+            }
+
+            return needResize;
+
+        }
+
+        function render(time) {
+
+            // time *= 0.001;
+
+            // if (matShader)
+            //     matShader.uniforms.time.value = time / 1000;
+            // if (materialShader)
+            //     materialShader.uniforms.time.value = time / 1000;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+
+            }
+
+            /*
+            cubes.forEach((cube, ndx) => {
+
+                const speed = 1 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+
+            });
+                */
+
+            controls.update();
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+
+        }
+
+        requestAnimationFrame(render);
+
+    }
+
+    main();
+</script>
+
+</html>

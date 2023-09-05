@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+        }
+
+        #main {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="main"></canvas>
+</body>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../threejs/build/three.module.js", 
+    "three/addons/": "../threejs/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    function main() {
+        // https://blog.mozvr.com/cartoon-outline-effect/
+        // https://blog.mozvr.com/customizing-vertex-shaders/
+
+        const canvas = document.querySelector('#main');
+        const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
+
+        const fov = 75;
+        const aspect = 2; // the canvas default
+        const near = 0.1;
+        const far = 5;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeeeeee);
+
+        {
+
+            const color = 0xFFFFFF;
+            const intensity = 3;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(- 1, 2, 4);
+            scene.add(light);
+
+
+        }
+
+        /*
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        function makeInstance(geometry, color, x) {
+
+            const material = new THREE.MeshPhongMaterial({ color });
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+
+            return cube;
+
+        }
+
+        const cubes = [
+            makeInstance(geometry, 0x44aa88, 0),
+            makeInstance(geometry, 0x8844aa, - 2),
+            makeInstance(geometry, 0xaa8844, 2),
+        ];
+        */
+
+        let obj = new THREE.Group();
+        const mat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color(0xFF00FF),
+            side: THREE.BackSide
+        })
+        // mat.onBeforeCompile = (shader) => {
+        //     const token = '#include <begin_vertex>';
+        //     const customTransform = `
+        //         vec3 transformed = position + objectNormal * 0.02;
+        //     `;
+        //     shader.vertexShader = shader.vertexShader.replace(token, customTransform);
+        // }
+        let matShader;
+        mat.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 }
+            shader.vertexShader = `
+         uniform float time;
+         ` + shader.vertexShader
+            const token = '#include <begin_vertex>'
+            const customTransform = `
+                vec3 transformed = position + objectNormal * 0.05;
+                transformed.x = position.x
+                + sin(position.y*10.0 + time*10.0)*0.1;
+                `
+            shader.vertexShader =
+                shader.vertexShader.replace(token, customTransform)
+            matShader = shader
+        }
+
+        const c1 = new THREE.Mesh(
+            new THREE.TorusKnotGeometry(0.6, 0.1, 256),
+            mat
+        );
+        const s = 1.03;
+        c1.scale.set(s, s, s);
+        obj.add(c1);
+
+        const matInner = new THREE.MeshPhongMaterial({
+            color: 'yellow',
+            side: THREE.FrontSide
+        })
+        let materialShader;
+        matInner.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 }
+            shader.vertexShader = `
+         uniform float time;
+         ` + shader.vertexShader
+            const token = '#include <begin_vertex>'
+            const customTransform = `
+                vec3 transformed = vec3(position);
+                transformed.x = position.x
+                + sin(position.y*10.0 + time*10.0)*0.1;
+                `
+            shader.vertexShader =
+                shader.vertexShader.replace(token, customTransform)
+            materialShader = shader
+        }
+
+
+        obj.add(new THREE.Mesh(
+            new THREE.TorusKnotGeometry(0.6, 0.1, 256),
+            matInner));
+        scene.add(obj);
+
+
+
+        function resizeRendererToDisplaySize(renderer) {
+
+            const canvas = renderer.domElement;
+            const pixelRatio = window.devicePixelRatio;
+            const width = canvas.clientWidth * pixelRatio | 0;
+            const height = canvas.clientHeight * pixelRatio | 0;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+
+                renderer.setSize(width, height, false);
+
+            }
+
+            return needResize;
+
+        }
+
+        function render(time) {
+
+            // time *= 0.001;
+
+            if (matShader)
+                matShader.uniforms.time.value = time / 1000;
+            if (materialShader)
+                materialShader.uniforms.time.value = time / 1000;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+
+            }
+
+            /*
+            cubes.forEach((cube, ndx) => {
+
+                const speed = 1 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+
+            });
+                */
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+
+        }
+
+        requestAnimationFrame(render);
+
+    }
+
+    main();
+</script>
+
+</html>

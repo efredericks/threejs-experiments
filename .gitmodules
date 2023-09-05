@@ -1,0 +1,3 @@
+[submodule "libs/simplex-noise"]
+	path = libs/simplex-noise
+	url = https://github.com/leodeslf/simplex-noise

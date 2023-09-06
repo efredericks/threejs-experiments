@@ -200,12 +200,21 @@
         }
 
 
+        // procedural?
+        var canvas2 = document.createElement("canvas");
+        canvas2.width = canvas.width;
+        canvas2.height = canvas.height;
+        generateNoise(0.1, canvas2);
+        let proctexture = new THREE.Texture(canvas2);
+        proctexture.needsUpdate = true;
+
         let obj = new THREE.Group();
         const geometry = new THREE.PlaneGeometry(1, 2, 24, 24);
         const material = new THREE.MeshStandardMaterial({
             // color: 0xffffff,
             map: gridTexture,
-            displacementMap: terrainTexture,
+            bumpMap: proctexture,
+            displacementMap: proctexture,//terrainTexture,
             displacementScale: 0.4,
             metalnessMap: metalTexture,
             metalness: 0.96,

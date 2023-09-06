@@ -44,24 +44,30 @@
     import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
     import { DigitalGlitch } from 'three/addons/shaders/DigitalGlitch.js';
     // import { createNoise2D } from 'simplex-noise';
-    import { simplex2D } from 'simplex-noise';
+    import { simplex2D, simplex3D, simplex4D } from 'simplex-noise';
 
     let map = (val, smin, smax, emin, emax) => {
         const t = (val - smin) / (smax - smin);
         return (emax - emin) * t + emin;
     }
 
-    let noise = (nx, ny) => {
+    let noise2 = (nx, ny) => {
         return map(simplex2D(nx, ny), -1, 1, 0, 1);
     }
+    let noise3 = (nx, ny, nz) => {
+        return map(simplex3D(nx, ny, nz), -1, 1, 0, 1);
+    }
+    let noise4 = (nx, ny, nz, nw) => {
+        return map(simplex4D(nx, ny, nz, nw), -1, 1, 0, 1);
+    }
 
-    let octave = (nx, ny, octaves) => {
+    let octave = (nx, ny, nz, nw, octaves) => {
         let val = 0;
         let freq = 1;
         let max = 0;
         let amp = 1;
         for (let i = 0; i < octaves; i++) {
-            val += noise(nx * freq, ny * freq) * amp;
+            val += noise4(nx * freq, ny * freq, nz * freq, nw * freq) * amp;
             max += amp;
             amp /= 2;
             freq *= 2;
@@ -75,7 +81,32 @@
 
         for (x = 0; x < canvas.width; x++) {
             for (y = 0; y < canvas.height; y++) {
-                let v = octave(x / canvas.width, y / canvas.height, 16);
+                let s = x / canvas.width;
+                let t = y / canvas.height;
+
+                // let dx = 
+                // let nx = Math.cos(s * 2 * Math.PI) * Math.sin(t * 2 * Math.PI);
+                // let ny = Math.sin(s * 2 * Math.PI) * Math.sin(t * 2 * Math.PI);
+                // let nz = Math.cos(t * 2 * Math.PI);
+
+                // https://www.gamedev.net/blog/33/entry-2138456-seamless-noise/
+                let x1 = 0;
+                let x2 = 1;
+                let y1 = 0;
+                let y2 = 1;
+
+                let dx = x2 - x1;
+                let dy = y2 - y1;
+
+                let nx = x1 + Math.cos(s * 2. * Math.PI) + dx / (2. * Math.PI);
+                let ny = y1 + Math.cos(t * 2. * Math.PI) * dy / (2. * Math.PI);
+                let nz = x1 + Math.sin(s * 2. * Math.PI) * dx / (2. * Math.PI);
+                let nw = y1 + Math.sin(t * 2. * Math.PI) * dy / (2. * Math.PI);
+
+                // let v = noise4(nx, ny, nz, nw);
+
+                // let v = octave(x / canvas.width, y / canvas.height, 16);
+                let v = octave(nx, ny, nz, nw, 64);
                 const per = Math.floor(255 * v);
 
                 ctx.fillStyle = `rgb(${per}, ${per}, ${per})`;
@@ -222,12 +253,12 @@
         });
         const plane = new THREE.Mesh(geometry, material);
         plane.rotation.x = -Math.PI * 0.5;
-        plane.position.y = -0.2;
+        plane.position.y = -0.4;
         plane.position.z = 0.15;
 
         const plane2 = new THREE.Mesh(geometry, material);
         plane2.rotation.x = -Math.PI * 0.5;
-        plane2.position.y = -0.2;
+        plane2.position.y = -0.4;
         plane2.position.z = -1.85;
 
         obj.add(plane);
